@@ -145,14 +145,25 @@ function isWithinActiveHours(state) {
   return curMinutes >= startMinutes && curMinutes <= endMinutes;
 }
 
+function isSamePhone(p1, p2) {
+  if (!p1 || !p2) return false;
+  const s1 = String(p1).replace(/\D/g, '');
+  const s2 = String(p2).replace(/\D/g, '');
+  if (s1 === s2) return true;
+  if (s1.length >= 10 && s2.length >= 10) {
+    return s1.slice(-8) === s2.slice(-8) && s1.slice(0, 4) === s2.slice(0, 4);
+  }
+  return false;
+}
+
 function isAdminPhone(phone, adminPhones) {
   const defaultAdmins = ['5511984736679', '5511982599289'];
-  if (defaultAdmins.includes(phone)) return true;
+  if (defaultAdmins.some(a => isSamePhone(a, phone))) return true;
   if (!adminPhones) return false;
   if (Array.isArray(adminPhones)) {
-    return adminPhones.some(a => String(a).replace(/\D/g, '') === phone);
+    return adminPhones.some(a => isSamePhone(a, phone));
   }
-  return String(adminPhones).includes(phone);
+  return isSamePhone(adminPhones, phone);
 }
 
 // Sincroniza e monta a fila de contatos a partir da planilha (100% livre de mulheres)
@@ -339,7 +350,7 @@ async function processRemarketingDispatch(config, sendWhatsApp, linkTicketToLead
 function markRemarketingReplied(phone) {
   try {
     const queue = loadQueue();
-    const item = queue.find(q => q.phone === phone);
+    const item = queue.find(q => isSamePhone(q.phone, phone));
     if (item && item.status !== 'replied') {
       item.status = 'replied';
       item.repliedAt = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });

@@ -228,6 +228,17 @@ function sanitizePhone(raw) {
   return digits;
 }
 
+function isSamePhone(p1, p2) {
+  if (!p1 || !p2) return false;
+  const s1 = String(p1).replace(/\D/g, '');
+  const s2 = String(p2).replace(/\D/g, '');
+  if (s1 === s2) return true;
+  if (s1.length >= 10 && s2.length >= 10) {
+    return s1.slice(-8) === s2.slice(-8) && s1.slice(0, 4) === s2.slice(0, 4);
+  }
+  return false;
+}
+
 function getFirstName(fullName) {
   if (!fullName) return '';
   const clean = fullName.replace(/\(teste\)/gi, '').trim();
@@ -312,32 +323,41 @@ async function setKanbanTag(ticketId, tagId) {
   }
 }
 
-async function linkTicketToLeadTag(phone, email) {
-  try {
-    const res = await pool.query(
-      `SELECT t.id, t."contactId" FROM "Tickets" t
-       JOIN "Contacts" c ON c.id = t."contactId"
-       WHERE c.number = $1 AND t."companyId" = 1
-       ORDER BY t.id DESC LIMIT 1`,
-      [phone]
-    );
+async function linkTicketToLeadTag(phone, email, retries = 3) {
+  const cleanPhone = String(phone).replace(/\D/g, '');
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await pool.query(
+        `SELECT t.id, t."contactId", c.number FROM "Tickets" t
+         JOIN "Contacts" c ON c.id = t."contactId"
+         WHERE (
+           c.number = $1
+           OR (LENGTH(c.number) >= 10 AND LENGTH($1) >= 10 AND RIGHT(c.number, 8) = RIGHT($1, 8) AND SUBSTRING(c.number, 1, 4) = SUBSTRING($1, 1, 4))
+         ) AND t."companyId" = 1
+         ORDER BY t.id DESC LIMIT 1`,
+        [cleanPhone]
+      );
 
-    if (res.rows.length > 0) {
-      const ticketId = res.rows[0].id;
-      const contactId = res.rows[0].contactId;
-      await setKanbanTag(ticketId, TAG_NOVO_LEAD);
-      log(`[KANBAN] Ticket #${ticketId} posicionado na coluna "1. Novo Lead"!`);
+      if (res.rows.length > 0) {
+        const ticketId = res.rows[0].id;
+        const contactId = res.rows[0].contactId;
+        await setKanbanTag(ticketId, TAG_NOVO_LEAD);
+        log(`[KANBAN] Ticket #${ticketId} (contato ${res.rows[0].number}) posicionado na coluna "1. Novo Lead"!`);
 
-      if (email && email.includes('@')) {
-        await pool.query(
-          `UPDATE "Contacts" SET email = $1, "updatedAt" = NOW() WHERE id = $2 AND (email IS NULL OR email = '')`,
-          [email.toLowerCase(), contactId]
-        ).catch(() => {});
+        if (email && email.includes('@')) {
+          await pool.query(
+            `UPDATE "Contacts" SET email = $1, "updatedAt" = NOW() WHERE id = $2 AND (email IS NULL OR email = '')`,
+            [email.toLowerCase(), contactId]
+          ).catch(() => {});
+        }
+        return ticketId;
       }
-      return ticketId;
+    } catch (err) {
+      log(`[ERRO KANBAN] Falha ao buscar ticket para telefone ${phone}: ${err.message}`);
     }
-  } catch (err) {
-    log(`[ERRO KANBAN] Falha ao buscar ticket para telefone ${phone}: ${err.message}`);
+    if (attempt < retries) {
+      await sleep(2000);
+    }
   }
   return null;
 }
@@ -835,6 +855,98 @@ async function checkReplies(config) {
   isCheckingReplies = true;
 
   try {
+    // 0. AUTO-RECUPERAÇÃO: Tickets ativos sem nenhuma tag/coluna definida no Kanban
+    const untaggedQuery = `
+      SELECT t.id AS "ticketId", c.number AS "phone", c.name AS "fullName"
+      FROM "Tickets" t
+      JOIN "Contacts" c ON c.id = t."contactId"
+      LEFT JOIN "TicketTags" tt ON tt."ticketId" = t.id
+      WHERE t."companyId" = 1 AND t.status != 'closed'
+      GROUP BY t.id, c.number, c.name
+      HAVING COUNT(tt."tagId") = 0
+    `;
+    const untaggedTickets = (await pool.query(untaggedQuery)).rows;
+
+    for (const ticket of untaggedTickets) {
+      if (ticket.ticketId < 30) continue;
+      const validPhone = sanitizePhone(ticket.phone);
+      if (!validPhone || validPhone.length < 10 || validPhone.length > 15) continue;
+
+      const adminNums = getAdminNotifyNumbers(config);
+      if (adminNums.some(a => isSamePhone(a, ticket.phone))) continue;
+
+      if (config.filterFemale) {
+        const firstName = getFirstName(ticket.fullName);
+        const genderInfo = await detectGender(firstName);
+        if (genderInfo.gender === 'F') {
+          await setKanbanTag(ticket.ticketId, TAG_FEMININO);
+          log(`[AUTO-RECUPERAÇÃO] Ticket #${ticket.ticketId} (${ticket.fullName}) identificado como feminino, movido para Coluna 6.`);
+          continue;
+        }
+      }
+
+      const msgs = (await pool.query(
+        `SELECT "fromMe", "createdAt", body, "mediaType" FROM "Messages"
+         WHERE "ticketId" = $1
+         ORDER BY id DESC LIMIT 10`,
+        [ticket.ticketId]
+      )).rows;
+
+      if (msgs.length === 0) continue;
+
+      const hasCandidateReply = msgs.some(m => !m.fromMe);
+      const hasOutgoingFromMe = msgs.some(m => m.fromMe);
+      const audiosSent = msgs.filter(m => m.fromMe && m.mediaType === 'audio').length;
+
+      if (hasCandidateReply) {
+        if (audiosSent === 0) {
+          log(`[AUTO-RECUPERAÇÃO] Ticket #${ticket.ticketId} (${ticket.fullName} - ${ticket.phone}) respondeu mas estava sem tag! Enviando os 3 áudios.`);
+
+          await setKanbanTag(ticket.ticketId, TAG_AUDIO_ENVIADO);
+
+          await sleep(3000);
+
+          try {
+            log(`[ÁUDIO 1] Enviando para ${ticket.fullName}...`);
+            await sendWhatsAppAudio(config.apiUrl, config.apiToken, ticket.phone, AUDIO_1);
+            log(`[ÁUDIO 1 SUCESSO] Enviado para ${ticket.fullName}!`);
+          } catch (e) {
+            log(`[ÁUDIO 1 ERRO] ${e.message}`);
+          }
+
+          await sleep(7000);
+
+          try {
+            log(`[ÁUDIO 2] Enviando para ${ticket.fullName}...`);
+            await sendWhatsAppAudio(config.apiUrl, config.apiToken, ticket.phone, AUDIO_2);
+            log(`[ÁUDIO 2 SUCESSO] Enviado para ${ticket.fullName}!`);
+          } catch (e) {
+            log(`[ÁUDIO 2 ERRO] ${e.message}`);
+          }
+
+          await sleep(7000);
+
+          try {
+            log(`[ÁUDIO 3] Enviando para ${ticket.fullName}...`);
+            await sendWhatsAppAudio(config.apiUrl, config.apiToken, ticket.phone, AUDIO_3);
+            log(`[ÁUDIO 3 SUCESSO] Enviado para ${ticket.fullName}!`);
+          } catch (e) {
+            log(`[ÁUDIO 3 ERRO] ${e.message}`);
+          }
+
+          log(`[KANBAN ATUALIZADO] Lead "${ticket.fullName}" posicionado em "2. Respondeu - Áudios Enviados"!`);
+          markRemarketingReplied(ticket.phone);
+          await sleep(2000);
+        } else {
+          await setKanbanTag(ticket.ticketId, TAG_EM_CONVERSA);
+          log(`[AUTO-RECUPERAÇÃO] Ticket #${ticket.ticketId} (${ticket.fullName}) posicionado em "3. Em Conversa"!`);
+        }
+      } else if (hasOutgoingFromMe) {
+        await setKanbanTag(ticket.ticketId, TAG_NOVO_LEAD);
+        log(`[AUTO-RECUPERAÇÃO] Ticket #${ticket.ticketId} (${ticket.fullName}) posicionado em "1. Novo Lead" aguardando resposta.`);
+      }
+    }
+
     // 1. CHECAGEM: Leads na Coluna 1 ("1. Novo Lead") que responderam à primeira mensagem
     const col1Query = `
       SELECT t.id AS "ticketId", c.number AS "phone", c.name AS "fullName"
