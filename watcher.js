@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { parse } = require('csv-parse/sync');
 const { Pool } = require('pg');
 const { detectGender } = require('./gender.js');
@@ -37,6 +38,65 @@ const TAG_CONVERTIDO = 5;
 const TAG_FEMININO = 6;
 const TAG_SINDICANCIA = 7;
 const TAG_REAGENDAR = 8;
+
+const JWT_SECRET = process.env.JWT_SECRET || 'f8e918237bba8d2345eaf1283940192834710293847581920394857102938475';
+
+function createAdminJwt() {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const nowSec = Math.floor(Date.now() / 1000);
+  const payload = Buffer.from(JSON.stringify({
+    id: 1,
+    profile: 'admin',
+    companyId: 1,
+    iat: nowSec,
+    exp: nowSec + 3600
+  })).toString('base64url');
+  const signature = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${payload}`).digest('base64url');
+  return `${header}.${payload}.${signature}`;
+}
+
+async function deleteAndCleanMessage(messageId, ticketId) {
+  if (!messageId) return;
+
+  // 1. Revoga no WhatsApp para todos e no Whaticket via API Baileys
+  try {
+    const token = createAdminJwt();
+    const res = await fetch(`http://127.0.0.1:4000/messages/${messageId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      log(`[LIMPEZA CHAT] Mensagem #${messageId} revogada no WhatsApp e no Whaticket.`);
+    } else {
+      const errText = await res.text();
+      log(`[AVISO LIMPEZA CHAT] API DELETE retornou status ${res.status}: ${errText}`);
+    }
+  } catch (err) {
+    log(`[AVISO LIMPEZA CHAT] Falha na chamada da API de remoção: ${err.message}`);
+  }
+
+  // 2. Garante marcação isDeleted no PostgreSQL
+  try {
+    await pool.query('UPDATE "Messages" SET "isDeleted" = true WHERE id = $1', [messageId]);
+  } catch (e) {}
+
+  // 3. Atualiza o lastMessage do Ticket para não deixar o card do Kanban mostrando "#1", "#2" etc.
+  if (ticketId) {
+    try {
+      const lastMsgRes = await pool.query(
+        `SELECT body FROM "Messages" 
+         WHERE "ticketId" = $1 AND id != $2 AND ("isDeleted" IS FALSE OR "isDeleted" IS NULL) 
+         ORDER BY id DESC LIMIT 1`,
+        [ticketId, messageId]
+      );
+      const cleanLastMsg = lastMsgRes.rows.length > 0 ? lastMsgRes.rows[0].body : '';
+      await pool.query(
+        `UPDATE "Tickets" SET "lastMessage" = $1, "updatedAt" = NOW() WHERE id = $2`,
+        [cleanLastMsg, ticketId]
+      );
+    } catch (e) {}
+  }
+}
 
 function log(msg) {
   const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -308,6 +368,44 @@ function getDayOfWeekName(year, month, day) {
   return days[dt.getDay()] || '';
 }
 
+const KANBAN_TAG_NAMES = {
+  1: '1. Novo Lead',
+  2: '2. Respondeu - Áudios Enviados',
+  3: '3. Em Conversa',
+  4: '4. Qualificado / Entrevista',
+  5: '5. Convertido',
+  6: '6. Leads Femininos (Sem Disparo)',
+  7: '7. Sindicancia',
+  8: '8. Reagendar Entrevista'
+};
+
+function parseKanbanCommand(body) {
+  if (!body) return null;
+  const clean = body.trim().toLowerCase();
+
+  // Comandos diretos: #1 a #8 (aceita #1, # 1, #coluna 1, #mover 1)
+  const numMatch = clean.match(/^#\s*(?:coluna\s*|mover\s*)?([1-8])\b/);
+  if (numMatch) {
+    const tagId = parseInt(numMatch[1], 10);
+    return {
+      tagId,
+      tagName: KANBAN_TAG_NAMES[tagId]
+    };
+  }
+
+  // Sinônimos amigáveis por texto
+  if (/^#\s*(novo|lead)\b/.test(clean)) return { tagId: 1, tagName: KANBAN_TAG_NAMES[1] };
+  if (/^#\s*(audio|audios|audio_enviado)\b/.test(clean)) return { tagId: 2, tagName: KANBAN_TAG_NAMES[2] };
+  if (/^#\s*(conversa|em_conversa|atendimento)\b/.test(clean)) return { tagId: 3, tagName: KANBAN_TAG_NAMES[3] };
+  if (/^#\s*(entrevista|qualificado)\b/.test(clean)) return { tagId: 4, tagName: KANBAN_TAG_NAMES[4] };
+  if (/^#\s*(convertido|iniciado|aprovado)\b/.test(clean)) return { tagId: 5, tagName: KANBAN_TAG_NAMES[5] };
+  if (/^#\s*(feminino|mulher|mulheres)\b/.test(clean)) return { tagId: 6, tagName: KANBAN_TAG_NAMES[6] };
+  if (/^#\s*(sindicancia|sindicância|investigacao)\b/.test(clean)) return { tagId: 7, tagName: KANBAN_TAG_NAMES[7] };
+  if (/^#\s*(reagendar|remarcar|cancelar|ausente)\b/.test(clean)) return { tagId: 8, tagName: KANBAN_TAG_NAMES[8] };
+
+  return null;
+}
+
 async function setKanbanTag(ticketId, tagId) {
   try {
     await pool.query(
@@ -507,9 +605,10 @@ async function checkAdminCommands(config) {
       JOIN "Tickets" t ON t.id = m."ticketId"
       JOIN "Contacts" c ON c.id = t."contactId"
       WHERE m."fromMe" = true 
-        AND m.body ILIKE '%#agendar%'
+        AND (m.body ILIKE '%#agendar%' OR m.body ~* '^#\\s*([1-8]|novo|lead|audio|audios|conversa|entrevista|qualificado|convertido|iniciado|feminino|sindicancia|sindicância|reagendar|remarcar)')
         AND m."createdAt" > NOW() - INTERVAL '3 days'
-      ORDER BY m.id DESC LIMIT 15;
+        AND (m."isDeleted" IS FALSE OR m."isDeleted" IS NULL)
+      ORDER BY m.id DESC LIMIT 20;
     `;
 
     const res = await pool.query(query);
@@ -522,6 +621,51 @@ async function checkAdminCommands(config) {
     for (const row of res.rows) {
       if (processed.has(row.id)) continue;
 
+      // 1. Checa se é comando de movimentação rápida do Kanban (#1 a #8)
+      const parsedKanban = parseKanbanCommand(row.body);
+      if (parsedKanban) {
+        processed.add(row.id);
+        saveProcessedCommands(processed);
+
+        log(`[COMANDO KANBAN DETECTADO] Ticket #${row.ticketId} (${row.contactName}) -> Movendo para Coluna ${parsedKanban.tagId} ("${parsedKanban.tagName}") via comando "${row.body.trim()}"`);
+
+        // Move a tag no Kanban
+        await setKanbanTag(row.ticketId, parsedKanban.tagId);
+
+        // Se for Coluna 2 ou posterior, cancela remarketing
+        if (parsedKanban.tagId >= 2) {
+          markRemarketingReplied(row.contactPhone);
+        }
+
+        // Se moveu para Reagendar (#8), atualiza status de compromisso existente
+        if (parsedKanban.tagId === TAG_REAGENDAR) {
+          const aptIdx = appointments.findIndex(a => a.ticketId === row.ticketId && a.status !== 'concluido' && a.status !== 'cancelado');
+          if (aptIdx >= 0) {
+            appointments[aptIdx].status = 'reagendar';
+            appointments[aptIdx].updatedAt = getFormattedDateTime();
+            hasUpdates = true;
+          }
+        }
+
+        // Notifica administradores no WhatsApp sobre a movimentação (feedback exclusivo aos administradores)
+        const adminAlert =
+          `📋 *[KANBAN ATUALIZADO VIA CELULAR]*\n\n` +
+          `👤 *Candidato:* ${row.contactName}\n` +
+          `📱 *WhatsApp:* +${row.contactPhone}\n` +
+          `➡️ *Nova Coluna:* ${parsedKanban.tagName}\n` +
+          `⚡ *Comando executado:* ${row.body.trim()}\n` +
+          `🧹 *Chat:* Mensagem apagada da conversa com sucesso.`;
+
+        await notifyAdmins(config, adminAlert);
+
+        // Limpa a mensagem do comando do WhatsApp e do Whaticket
+        await deleteAndCleanMessage(row.id, row.ticketId);
+
+        await sleep(1500);
+        continue;
+      }
+
+      // 2. Checa se é comando de agendamento no Google Calendar (#agendar)
       const parsed = parseAgendarCommand(row.body);
       if (!parsed) {
         processed.add(row.id);
@@ -665,6 +809,9 @@ async function checkAdminCommands(config) {
         `📋 *Kanban:* Coluna 4 (Qualificado / Entrevista)`;
 
       await notifyAdmins(config, adminMsg);
+
+      // Limpa a mensagem do comando #agendar do chat
+      await deleteAndCleanMessage(row.id, row.ticketId);
 
       await sleep(2000);
     }
