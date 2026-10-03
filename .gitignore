@@ -1,0 +1,47 @@
+# Arquivos grandes (> 100MB não permitidos no GitHub)
+*.tar.gz
+*.zip
+*.rar
+*.tar
+
+# Dados sensíveis e LGPD de candidatos
+*.csv
+sheet_last.csv
+sheet_sample.csv
+
+# Senhas, chaves SSH e segredos de ambiente
+ssh_askpass.bat
+credentials.json
+service_account.json
+token.json
+.env
+.env.*
+
+# Configuração com tokens reais (use config.example.json como modelo)
+config.json
+
+# Dados de estado e filas locais em tempo de execução
+queue.json
+scheduled_leads.json
+processed_leads.json
+appointments.json
+processed_commands.json
+remarketing_queue.json
+remarketing_state.json
+state.json
+*.log
+watcher.log
+
+# Diretórios de dependências e backups
+node_modules/
+backup_extracted_auditoria/
+install/
+.vscode/
+.idea/
+
+# Arquivos temporários de desenvolvimento
+*_new.*
+test_*.js
+Thumbs.db
+Desktop.ini
+.DS_Store

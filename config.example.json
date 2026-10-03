@@ -1,0 +1,19 @@
+{
+  "sheetUrl": "https://docs.google.com/spreadsheets/d/SEU_ID_PLANILHA/export?format=csv",
+  "apiUrl": "http://127.0.0.1:4000/api/messages/send",
+  "apiToken": "SEU_TOKEN_API_WHATICKET",
+  "checkIntervalSeconds": 30,
+  "delayBetweenMessagesMs": 8000,
+  "adminNotifyNumber": "5511984736679, 5511982599289",
+  "adminNotifyNumbers": [
+    "5511984736679",
+    "5511982599289"
+  ],
+  "filterFemale": true,
+  "workingHours": {
+    "startHour": 8,
+    "endHour": 21
+  },
+  "queueIntervalMinutes": 25,
+  "messageTemplate": "{{saudacao}} {{primeiro_nome}}, Tudo bem?\n\nSou Venerável Biaggio Scomparin e recebi sua intenção em tornar-se Membro da Maçonaria.\n\nPoderia me responder algumas perguntas para iniciarmos a conversa?\n\nReside em que região de SP?\nQual a sua idade?\nPorquê quer entrar na Maçonaria?"
+}

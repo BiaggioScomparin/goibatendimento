@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel do Funil de Leads & Automações — Whaticket</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f5f7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    [v-cloak] { display: none; }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased p-4 md:p-6 lg:p-8">
+
+  <div id="app" v-cloak class="max-w-6xl mx-auto space-y-6">
+
+    <!-- TOAST NOTIFICATION -->
+    <div v-if="toast.show" :class="toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'"
+         class="fixed top-5 right-5 z-50 px-5 py-3 rounded-xl shadow-2xl text-white font-medium flex items-center space-x-3 transition-all duration-300">
+      <i :class="toast.type === 'success' ? 'fa-solid fa-circle-check text-xl' : 'fa-solid fa-triangle-exclamation text-xl'"></i>
+      <span>{{ toast.message }}</span>
+    </div>
+
+    <!-- HEADER -->
+    <header class="glass-card rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
+      <div class="flex items-center space-x-4">
+        <div class="w-13 h-13 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center p-3.5 shadow-lg shadow-indigo-500/20">
+          <i class="fa-solid fa-robot text-2xl text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-3">
+            <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white">Funil de Leads & Automações</h1>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+              Ativo 24/7
+            </span>
+          </div>
+          <p class="text-xs sm:text-sm text-slate-400 mt-0.5">
+            Loja Lealdade e Justiça nº 001 — GOIB • Venerável Biaggio Scomparin
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3 self-end md:self-auto">
+        <button @click="refreshAll" :disabled="loading" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center space-x-2 border border-slate-700 transition">
+          <i class="fa-solid fa-arrows-rotate" :class="{ 'fa-spin': loading }"></i>
+          <span>Atualizar</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- NAVIGATION TABS -->
+    <nav class="flex space-x-2 overflow-x-auto pb-2 border-b border-slate-800 custom-scrollbar">
+      <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+              :class="currentTab === tab.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
+              class="px-4 py-2.5 rounded-xl font-medium text-sm flex items-center space-x-2.5 whitespace-nowrap transition">
+        <i :class="tab.icon"></i>
+        <span>{{ tab.name }}</span>
+        <span v-if="tab.badge" class="px-2 py-0.5 text-xs rounded-full bg-slate-900/60 text-slate-300 font-bold ml-1">
+          {{ tab.badge }}
+        </span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: VISÃO GERAL & MÉTRICAS -->
+    <section v-if="currentTab === 'overview'" class="space-y-6">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Novos Leads</span>
+            <i class="fa-solid fa-user-plus text-yellow-400"></i>
+          </div>
+          <span class="text-2xl font-bold text-white">{{ getKanbanCount(1) }}</span>
+          <span class="text-[11px] text-yellow-400/80 mt-1 font-medium">1. Novo Lead</span>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Áudios Enviados</span>
+            <i class="fa-solid fa-microphone-lines text-orange-400"></i>
+          </div>
+          <span class="text-2xl font-bold text-white">{{ getKanbanCount(2) }}</span>
+          <span class="text-[11px] text-orange-400/80 mt-1 font-medium">2. 3 Áudios</span>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Em Conversa</span>
+            <i class="fa-solid fa-comments text-blue-400"></i>
+          </div>
+          <span class="text-2xl font-bold text-white">{{ getKanbanCount(3) }}</span>
+          <span class="text-[11px] text-blue-400/80 mt-1 font-medium">3. Aguardando Você</span>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Entrevistas</span>
+            <i class="fa-regular fa-calendar-check text-emerald-400"></i>
+          </div>
+          <span class="text-2xl font-bold text-white">{{ getKanbanCount(4) }}</span>
+          <span class="text-[11px] text-emerald-400/80 mt-1 font-medium">4. Qualificado</span>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Reagendar</span>
+            <i class="fa-solid fa-calendar-xmark text-rose-400"></i>
+          </div>
+          <span class="text-2xl font-bold text-white">{{ getKanbanCount(8) }}</span>
+          <span class="text-[11px] text-rose-400/80 mt-1 font-medium">8. Remarcação</span>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Convertidos</span>
+            <i class="fa-solid fa-award text-purple-400"></i>
+          </div>
+          <span class="text-2xl font-bold text-white">{{ getKanbanCount(5) }}</span>
+          <span class="text-[11px] text-purple-400/80 mt-1 font-medium">5. Convertidos</span>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-6">
+        <h2 class="text-base font-bold text-white mb-4 flex items-center">
+          <i class="fa-solid fa-diagram-project text-indigo-400 mr-2"></i>
+          Fluxo de Conversão Automatizado
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
+            <span class="text-xs font-semibold text-indigo-400 block mb-1">Passo 1: Captura</span>
+            <p class="text-sm font-medium text-white">Planilha Google Sheets</p>
+            <p class="text-xs text-slate-400 mt-1">Espera humanizada de {{ config.humanDelay?.minMinutes || 4 }} a {{ config.humanDelay?.maxMinutes || 8 }} minutos antes do 1º envio.</p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
+            <span class="text-xs font-semibold text-orange-400 block mb-1">Passo 2: Qualificação</span>
+            <p class="text-sm font-medium text-white">3 Áudios PTT Sequenciais</p>
+            <p class="text-xs text-slate-400 mt-1">Disparo com pausas naturais de 5s a 7s quando o candidato responde à 1ª pergunta.</p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
+            <span class="text-xs font-semibold text-blue-400 block mb-1">Passo 3: Alerta do Admin</span>
+            <p class="text-sm font-medium text-white">Alerta Imediato no WhatsApp</p>
+            <p class="text-xs text-slate-400 mt-1">Quando o candidato responde aos áudios, move para Coluna 3 e você assume no Whaticket.</p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
+            <span class="text-xs font-semibold text-emerald-400 block mb-1">Passo 4: Agendamento</span>
+            <p class="text-sm font-medium text-white">#agendar Data Hora</p>
+            <p class="text-xs text-slate-400 mt-1">Cria no Google Agenda, convida srzambrini@gmail.com, envia mapa e dispara follow-up matinal.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 1.5: REMARKETING BASE HISTÓRICA -->
+    <section v-if="currentTab === 'remarketing'" class="space-y-6">
+      
+      <!-- TOP STATUS BANNER -->
+      <div class="glass-card rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <div class="flex items-center space-x-3">
+            <h2 class="text-lg font-bold text-white flex items-center">
+              <i class="fa-solid fa-bullhorn text-indigo-400 mr-2.5 text-xl"></i>
+              Motor de Remarketing Humanizado (Base Antiga)
+            </h2>
+            <span v-if="remarketing.state && remarketing.state.enabled" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+              Ativo & Disparando
+            </span>
+            <span v-else class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1.5"></span>
+              Pausado
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">
+            Reativação progressiva com blindagem anti-ban, rotação dos 10 modelos e disparo automático dos 3 áudios ao responder.
+          </p>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <button @click="triggerSyncRemarketing" :disabled="syncingRemarketing" class="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition border border-slate-700 flex items-center">
+            <i :class="syncingRemarketing ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-rotate'" class="mr-1.5"></i>
+            Sincronizar Base
+          </button>
+          
+          <button @click="toggleRemarketingStatus" :disabled="togglingRemarketing" :class="remarketing.state && remarketing.state.enabled ? 'bg-amber-600/80 hover:bg-amber-600 text-amber-100' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20'" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center">
+            <i :class="remarketing.state && remarketing.state.enabled ? 'fa-solid fa-pause' : 'fa-solid fa-play'" class="mr-1.5"></i>
+            {{ remarketing.state && remarketing.state.enabled ? 'Pausar Disparos' : 'Iniciar Remarketing' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 4 STAT CARDS -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Base Masculina Qualificada</span>
+            <i class="fa-solid fa-users-viewfinder text-blue-400"></i>
+          </div>
+          <span class="text-2xl font-bold text-white">{{ remarketing.counts ? remarketing.counts.total : 1299 }}</span>
+          <span class="text-[11px] text-emerald-400/80 mt-1 font-medium flex items-center">
+            <i class="fa-solid fa-shield-halved mr-1"></i> 89 mulheres filtradas (0% envio)
+          </span>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Disparos Hoje</span>
+            <i class="fa-solid fa-paper-plane text-indigo-400"></i>
+          </div>
+          <div class="flex items-baseline space-x-2">
+            <span class="text-2xl font-bold text-white">{{ remarketing.state ? remarketing.state.todaySent : 0 }}</span>
+            <span class="text-xs text-slate-500">/ {{ remarketing.state ? remarketing.state.dailyLimit : 50 }} dia</span>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5 mt-2 overflow-hidden">
+            <div class="bg-indigo-500 h-1.5 rounded-full" :style="{ width: Math.min(100, Math.round(((remarketing.state ? remarketing.state.todaySent : 0) / ((remarketing.state ? remarketing.state.dailyLimit : 50) || 1)) * 100)) + '%' }"></div>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Progresso da Base Total</span>
+            <i class="fa-solid fa-chart-line text-emerald-400"></i>
+          </div>
+          <div class="flex items-baseline space-x-2">
+            <span class="text-2xl font-bold text-white">{{ remarketing.counts ? remarketing.counts.sent : 0 }}</span>
+            <span class="text-xs text-emerald-400 font-bold">({{ remarketingProgress }}%)</span>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5 mt-2 overflow-hidden">
+            <div class="bg-emerald-500 h-1.5 rounded-full" :style="{ width: remarketingProgress + '%' }"></div>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs mb-2">
+            <span>Respostas / 3 Áudios Enviados</span>
+            <i class="fa-solid fa-microphone-lines text-orange-400"></i>
+          </div>
+          <span class="text-2xl font-bold text-white">{{ remarketing.counts ? remarketing.counts.replied : 0 }}</span>
+          <span class="text-[11px] text-orange-400/80 mt-1 font-medium flex items-center">
+            <i class="fa-solid fa-bolt mr-1"></i> Fluxo de áudios ativo
+          </span>
+        </div>
+      </div>
+
+      <!-- INFORMAÇÕES DE CADÊNCIA & ANTI-BAN -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- CONFIGURAÇÕES DE CADÊNCIA -->
+        <div class="glass-card rounded-2xl p-6 lg:col-span-1 space-y-4">
+          <h3 class="text-sm font-bold text-white flex items-center">
+            <i class="fa-solid fa-sliders text-indigo-400 mr-2"></i>
+            Parâmetros Anti-Bloqueio
+          </h3>
+          <p class="text-xs text-slate-400">
+            Valores calibrados para humanização máxima e preservação total do número.
+          </p>
+
+          <div v-if="remarketing.state" class="space-y-3">
+            <div>
+              <label class="text-xs text-slate-300 font-medium block mb-1">Limite Máximo Diário</label>
+              <div class="flex items-center space-x-2">
+                <input type="number" v-model.number="remarketing.state.dailyLimit" min="10" max="150" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                <span class="text-xs text-slate-500">mensagens</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-slate-300 font-medium block mb-1">Intervalo Mín.</label>
+                <div class="flex items-center space-x-1">
+                  <input type="number" v-model.number="remarketing.state.minIntervalMinutes" min="3" max="60" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                  <span class="text-xs text-slate-500">min</span>
+                </div>
+              </div>
+              <div>
+                <label class="text-xs text-slate-300 font-medium block mb-1">Intervalo Máx.</label>
+                <div class="flex items-center space-x-1">
+                  <input type="number" v-model.number="remarketing.state.maxIntervalMinutes" min="5" max="120" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                  <span class="text-xs text-slate-500">min</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-slate-300 font-medium block mb-1">Horário Inicial</label>
+                <input type="number" v-model.number="remarketing.state.startHour" min="6" max="12" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+              </div>
+              <div>
+                <label class="text-xs text-slate-300 font-medium block mb-1">Horário Final</label>
+                <input type="number" v-model.number="remarketing.state.endHour" min="18" max="23" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+              </div>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+              <div class="flex items-center text-slate-300 font-semibold mb-1">
+                <i class="fa-solid fa-mug-hot text-amber-400 mr-1.5"></i> Pausa de Café Automática
+              </div>
+              <p>A cada 8 disparos contínuos, o robô faz uma pausa de 35 a 55 min antes de retomar.</p>
+            </div>
+
+            <button @click="saveRemarketingSettings" :disabled="savingRemarketingConfig" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center justify-center">
+              <i :class="savingRemarketingConfig ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-floppy-disk'" class="mr-1.5"></i>
+              Salvar Parâmetros
+            </button>
+          </div>
+        </div>
+
+        <!-- 10 MODELOS APROVADOS -->
+        <div class="glass-card rounded-2xl p-6 lg:col-span-2 space-y-4">
+          <div class="flex justify-between items-center">
+            <h3 class="text-sm font-bold text-white flex items-center">
+              <i class="fa-solid fa-shuffle text-emerald-400 mr-2"></i>
+              10 Modelos Aprovados em Rotação Aleatória
+            </h3>
+            <span class="text-xs text-slate-400">1 modelo diferente a cada lead</span>
+          </div>
+
+          <!-- SELETOR DE MODELOS -->
+          <div class="flex flex-wrap gap-1.5">
+            <button v-for="(tmpl, idx) in remarketing.templates" :key="idx" @click="activeTemplateTab = idx" :class="activeTemplateTab === idx ? 'bg-indigo-600 text-white font-bold' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'" class="px-2.5 py-1 rounded-lg text-xs font-semibold transition">
+              Mod {{ idx + 1 }}
+            </button>
+          </div>
+
+          <div v-if="remarketing.templates && remarketing.templates[activeTemplateTab]" class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-bold text-indigo-300">Modelo {{ activeTemplateTab + 1 }}</span>
+              <span class="text-slate-500 font-mono">Variáveis: &#123;&#123;saudacao&#125;&#125;, &#123;&#123;primeiro_nome&#125;&#125;</span>
+            </div>
+            <p class="text-xs text-slate-200 whitespace-pre-line leading-relaxed font-sans">{{ remarketing.templates[activeTemplateTab] }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABELA DE ÚLTIMOS DISPAROS DE REMARKETING -->
+      <div class="glass-card rounded-2xl p-6 space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="text-sm font-bold text-white flex items-center">
+            <i class="fa-solid fa-clock-rotate-left text-indigo-400 mr-2"></i>
+            Acompanhamento dos Últimos Envios de Remarketing
+          </h3>
+          <span class="text-xs text-slate-400">{{ remarketing.recentSent ? remarketing.recentSent.length : 0 }} registros recentes</span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-900/70 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
+              <tr>
+                <th class="py-3 px-3">Candidato</th>
+                <th class="py-3 px-3">Modelo</th>
+                <th class="py-3 px-3">Horário do Envio</th>
+                <th class="py-3 px-3">Status no Funil</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60">
+              <tr v-for="lead in remarketing.recentSent" :key="lead.id" class="hover:bg-slate-900/40 transition">
+                <td class="py-3 px-3">
+                  <div class="font-bold text-white">{{ lead.fullName }}</div>
+                  <a :href="'https://wa.me/' + lead.phone" target="_blank" class="text-emerald-400 hover:underline font-mono text-[11px] flex items-center mt-0.5">
+                    <i class="fa-brands fa-whatsapp mr-1"></i> +{{ lead.phone }}
+                  </a>
+                </td>
+                <td class="py-3 px-3 font-mono">
+                  <span class="px-2 py-0.5 rounded-md bg-slate-800 text-indigo-300 font-semibold">
+                    Modelo {{ lead.templateIndex || 1 }}
+                  </span>
+                </td>
+                <td class="py-3 px-3 font-mono text-slate-300">
+                  {{ lead.sentAt || '-' }}
+                </td>
+                <td class="py-3 px-3">
+                  <span v-if="lead.status === 'replied'" class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-400 border border-orange-500/20 flex items-center w-max">
+                    <i class="fa-solid fa-microphone-lines mr-1.5"></i> Respondeu (Áudios Enviados)
+                  </span>
+                  <span v-else-if="lead.status === 'sent'" class="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center w-max">
+                    <i class="fa-solid fa-check mr-1.5"></i> Mensagem Entregue
+                  </span>
+                  <span v-else class="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-slate-800 text-slate-400 flex items-center w-max">
+                    Pendente
+                  </span>
+                </td>
+              </tr>
+              <tr v-if="!remarketing.recentSent || remarketing.recentSent.length === 0">
+                <td colspan="4" class="py-8 text-center text-slate-500 italic">
+                  Nenhum envio realizado ainda. Clique em "Iniciar Remarketing" acima para começar os disparos humanizados!
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 2: GOOGLE AGENDA & AGENDAMENTOS -->
+    <section v-if="currentTab === 'calendar'" class="space-y-6">
+      
+      <!-- TOP STATUS BANNER -->
+      <div class="glass-card rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <div class="flex items-center space-x-3">
+            <h2 class="text-lg font-bold text-white flex items-center">
+              <i class="fa-regular fa-calendar-check text-indigo-400 mr-2.5 text-xl"></i>
+              Integração Google Calendar & Entrevistas Presenciais
+            </h2>
+            <span v-if="calendarInfo.configured" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+              Conectado: {{ calendarInfo.clientEmail }}
+            </span>
+            <span v-else class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1.5"></span>
+              Modo Autônomo WhatsApp Ativo
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">
+            Gatilho por comando no chat: <code class="px-2 py-0.5 rounded bg-slate-900 text-indigo-300 font-mono">#agendar 03/10/2026 16:00</code>
+          </p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button v-if="calendarInfo.configured" @click="testCalendarConnection" :disabled="testingCal" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 flex items-center space-x-2 transition">
+            <i class="fa-solid fa-plug" :class="{ 'fa-spin': testingCal }"></i>
+            <span>Testar Conexão</span>
+          </button>
+          <button v-if="calendarInfo.configured" @click="disconnectGoogle" class="px-3.5 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-xs font-medium text-rose-300 border border-rose-800/50 flex items-center space-x-2 transition">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+            <span>Desconectar</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- CARD 1: CONEXÃO NATIVA GOOGLE COM 1 CLIQUE -->
+      <div class="glass-card rounded-2xl p-6 space-y-4">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center">
+              <i class="fa-brands fa-google text-red-400 mr-2 text-lg"></i>
+              Login Direto com a Conta Google (1 Clique)
+            </h3>
+            <p class="text-xs text-slate-400">
+              Conecte sua conta do Google com apenas um clique para sincronizar diretamente com a sua agenda pessoal.
+            </p>
+          </div>
+        </div>
+
+        <!-- SE JÁ ESTIVER CONECTADO -->
+        <div v-if="calendarInfo.configured" class="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg">
+              <i class="fa-solid fa-check"></i>
+            </div>
+            <div>
+              <p class="text-xs font-bold text-white">Sua conta do Google está vinculada com sucesso!</p>
+              <p class="text-[11px] text-emerald-400/90 font-mono">{{ calendarInfo.clientEmail }}</p>
+            </div>
+          </div>
+          <span class="text-xs text-slate-400">
+            Eventos criados via <code class="text-indigo-300 font-mono">#agendar</code> aparecem automaticamente no seu celular e PC.
+          </span>
+        </div>
+
+        <!-- SE NÃO ESTIVER CONECTADO -->
+        <div v-else class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label class="block font-medium text-slate-300 mb-1">
+                Client ID do Google Cloud:
+              </label>
+              <input type="text" v-model="config.calendar.clientId" placeholder="ex: 123456789-xxxx.apps.googleusercontent.com"
+                     class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+            </div>
+            <div>
+              <label class="block font-medium text-slate-300 mb-1">
+                Client Secret do Google Cloud:
+              </label>
+              <input type="password" v-model="config.calendar.clientSecret" placeholder="ex: GOCSPX-xxxxxxxxxxxxxx"
+                     class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row items-center gap-3 pt-1">
+            <button @click="connectGoogleOAuth" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs flex items-center justify-center space-x-3 transition shadow-lg shadow-white/10">
+              <i class="fa-brands fa-google text-red-500 text-base"></i>
+              <span>Fazer Login com o Google</span>
+            </button>
+            <button @click="saveConfig" :disabled="saving" class="w-full sm:w-auto px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition">
+              <i class="fa-solid fa-floppy-disk mr-1"></i> Salvar Chaves
+            </button>
+            <p class="text-[11px] text-slate-400">
+              URI de redirecionamento: <code class="text-indigo-400 font-mono">https://app.7now.xyz/funnel-api/auth/google/callback</code>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- GRID CONFIGURAÇÃO + GUIA -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- CARD DE CONFIGURAÇÕES DA ENTREVISTA -->
+        <div class="glass-card rounded-2xl p-6 space-y-5">
+          <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center">
+            <i class="fa-solid fa-sliders text-indigo-400 mr-2"></i>
+            Parâmetros das Entrevistas & Google Calendar
+          </h3>
+
+          <div class="space-y-4 text-xs">
+            <div>
+              <label class="block font-medium text-slate-300 mb-1">
+                📍 Endereço Completo do Templo (Local do Encontro)
+              </label>
+              <input type="text" v-model="config.calendar.location"
+                     class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+              <p class="text-[11px] text-slate-400 mt-1">Este endereço é enviado na confirmação com o link do Google Maps.</p>
+            </div>
+
+            <div>
+              <label class="block font-medium text-slate-300 mb-1">
+                📧 E-mail para Colocar em Cópia / Convite (CC)
+              </label>
+              <input type="email" v-model="config.calendar.copyEmail"
+                     class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+              <p class="text-[11px] text-slate-400 mt-1">Sempre convidado/copiado nas entrevistas criadas no Google Agenda.</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block font-medium text-slate-300 mb-1">
+                  🌅 Horário do Follow-up Matinal
+                </label>
+                <div class="flex items-center space-x-2">
+                  <input type="number" min="5" max="12" v-model.number="config.calendar.morningHour"
+                         class="w-16 px-2.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-white text-center font-mono">
+                  <span class="text-slate-400 font-bold">:</span>
+                  <input type="number" min="0" max="59" step="5" v-model.number="config.calendar.morningMinute"
+                         class="w-16 px-2.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-white text-center font-mono">
+                  <span class="text-slate-400 text-[11px]">horas</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">Pergunta se o candidato virá (Opções 1 ou 2).</p>
+              </div>
+
+              <div>
+                <label class="block font-medium text-slate-300 mb-1">
+                  ⏳ Aviso Pré-Entrevista
+                </label>
+                <div class="flex items-center space-x-2">
+                  <input type="number" min="15" max="180" step="5" v-model.number="config.calendar.preInterviewMinutes"
+                         class="w-20 px-2.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-white text-center font-mono">
+                  <span class="text-slate-400 text-[11px]">min antes</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">Avisa que você já está no Templo aguardando.</p>
+              </div>
+            </div>
+
+            <div class="pt-2">
+              <button @click="saveConfig" :disabled="saving" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center space-x-2 transition shadow-lg shadow-indigo-600/30">
+                <i class="fa-solid fa-floppy-disk"></i>
+                <span>{{ saving ? 'Salvando...' : 'Salvar Parâmetros da Agenda' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- GUIA DO GATILHO & ALTERNATIVA SERVICE ACCOUNT -->
+        <div class="space-y-6">
+
+          <!-- GUIA VISUAL DO COMANDO -->
+          <div class="glass-card rounded-2xl p-6 space-y-3">
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center">
+              <i class="fa-solid fa-terminal text-emerald-400 mr-2"></i>
+              Como Usar o Gatilho no Chat do Whaticket
+            </h3>
+
+            <div class="bg-black/60 p-3.5 rounded-xl border border-slate-800 font-mono text-xs space-y-2">
+              <div class="text-slate-400"># Digite no chat com o candidato:</div>
+              <div class="text-emerald-400 font-bold">#agendar 03/10/2026 16:00</div>
+              <div class="text-slate-500 text-[11px] pt-1">Exemplo 1: <span class="text-slate-300">#agendar 03/10/2026 16:00</span></div>
+              <div class="text-slate-500 text-[11px]">Exemplo 2: <span class="text-slate-300">#agendar 03/10 às 16:30</span></div>
+            </div>
+
+            <ul class="text-xs text-slate-400 space-y-1.5 pt-1">
+              <li class="flex items-start">
+                <i class="fa-solid fa-check text-emerald-400 text-[11px] mr-2 mt-0.5"></i>
+                <span>Move o ticket para a coluna <strong class="text-white">"4. Qualificado / Entrevista"</strong> no Kanban.</span>
+              </li>
+              <li class="flex items-start">
+                <i class="fa-solid fa-check text-emerald-400 text-[11px] mr-2 mt-0.5"></i>
+                <span>Dispara WhatsApp formal com o endereço do Templo e rota do Google Maps.</span>
+              </li>
+              <li class="flex items-start">
+                <i class="fa-solid fa-check text-emerald-400 text-[11px] mr-2 mt-0.5"></i>
+                <span>No dia da entrevista (08:30), pergunta confirmação. Se responder <strong class="text-rose-400">"Não / Reagendar"</strong>, move imediatamente para <strong class="text-white">"8. Reagendar Entrevista"</strong>.</span>
+              </li>
+            </ul>
+          </div>
+
+          <!-- ALTERNATIVA: SERVICE ACCOUNT -->
+          <div class="glass-card rounded-2xl p-4 text-xs text-slate-400 space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-slate-300 text-xs">Alternativa: Service Account (.JSON)</span>
+              <label class="text-[11px] text-indigo-400 hover:underline cursor-pointer">
+                Enviar JSON
+                <input type="file" accept=".json" @change="uploadCredentialsFile" class="hidden">
+              </label>
+            </div>
+            <p class="text-[11px]">Caso prefira usar uma Conta de Serviço sem login OAuth, basta fazer o upload do arquivo JSON.</p>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- TABELA DE AGENDAMENTOS -->
+      <div class="glass-card rounded-2xl p-6 space-y-4">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center">
+              <i class="fa-solid fa-calendar-days text-indigo-400 mr-2"></i>
+              Entrevistas Agendadas ({{ appointments.length }})
+            </h3>
+            <p class="text-xs text-slate-400">Histórico e status em tempo real de cada entrevista marcada.</p>
+          </div>
+
+          <div class="flex items-center space-x-1.5 bg-slate-900/80 p-1 rounded-xl border border-slate-800 text-xs">
+            <button @click="appointmentFilter = 'all'" :class="appointmentFilter === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'" class="px-2.5 py-1 rounded-lg transition font-medium">Todas</button>
+            <button @click="appointmentFilter = 'today'" :class="appointmentFilter === 'today' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'" class="px-2.5 py-1 rounded-lg transition font-medium">Hoje</button>
+            <button @click="appointmentFilter = 'confirmado'" :class="appointmentFilter === 'confirmado' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'" class="px-2.5 py-1 rounded-lg transition font-medium">Confirmadas</button>
+            <button @click="appointmentFilter = 'reagendar'" :class="appointmentFilter === 'reagendar' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'" class="px-2.5 py-1 rounded-lg transition font-medium">Reagendar</button>
+          </div>
+        </div>
+
+        <div v-if="filteredAppointments.length === 0" class="text-center py-10 text-slate-500 text-xs">
+          <i class="fa-regular fa-calendar text-3xl mb-2 block"></i>
+          Nenhum agendamento encontrado para este filtro.
+        </div>
+
+        <div v-else class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-900/60 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+              <tr>
+                <th class="py-3 px-3">Candidato</th>
+                <th class="py-3 px-3">Data & Horário</th>
+                <th class="py-3 px-3">Status</th>
+                <th class="py-3 px-3">Follow-up Manhã (08:30)</th>
+                <th class="py-3 px-3">Lembrete 45 min</th>
+                <th class="py-3 px-3">Google Agenda</th>
+                <th class="py-3 px-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60">
+              <tr v-for="apt in filteredAppointments" :key="apt.id" class="hover:bg-slate-900/40 transition">
+                <td class="py-3 px-3">
+                  <div class="font-bold text-white">{{ apt.candidateName }}</div>
+                  <a :href="'https://wa.me/' + apt.candidatePhone" target="_blank" class="text-emerald-400 hover:underline font-mono text-[11px] flex items-center mt-0.5">
+                    <i class="fa-brands fa-whatsapp mr-1"></i> +{{ apt.candidatePhone }}
+                  </a>
+                  <div v-if="apt.candidateEmail" class="text-slate-300 font-mono text-[11px] flex items-center mt-0.5" title="Convidado Google Calendar">
+                    <i class="fa-regular fa-envelope mr-1 text-indigo-400"></i> {{ apt.candidateEmail }}
+                  </div>
+                  <div v-else class="text-amber-400/80 font-mono text-[10px] flex items-center mt-0.5">
+                    <i class="fa-regular fa-envelope mr-1"></i> Aguardando e-mail
+                  </div>
+                </td>
+                <td class="py-3 px-3 font-mono">
+                  <div class="font-semibold text-white">{{ apt.dateStr }}</div>
+                  <div class="text-indigo-400 font-bold text-[11px]">{{ apt.timeStr }}</div>
+                </td>
+                <td class="py-3 px-3">
+                  <span :class="getStatusBadgeClass(apt.status)" class="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider inline-block">
+                    {{ apt.status }}
+                  </span>
+                </td>
+                <td class="py-3 px-3">
+                  <span v-if="apt.morningSent" class="text-emerald-400 flex items-center font-medium">
+                    <i class="fa-solid fa-circle-check mr-1.5"></i> Enviado
+                  </span>
+                  <span v-else class="text-slate-500 flex items-center">
+                    <i class="fa-regular fa-clock mr-1.5"></i> Pendente
+                  </span>
+                </td>
+                <td class="py-3 px-3">
+                  <span v-if="apt.preInterviewSent" class="text-emerald-400 flex items-center font-medium">
+                    <i class="fa-solid fa-circle-check mr-1.5"></i> Enviado
+                  </span>
+                  <span v-else class="text-slate-500 flex items-center">
+                    <i class="fa-regular fa-clock mr-1.5"></i> Pendente
+                  </span>
+                </td>
+                <td class="py-3 px-3">
+                  <a v-if="apt.googleEventLink" :href="apt.googleEventLink" target="_blank" class="text-indigo-400 hover:underline flex items-center">
+                    <i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Ver no Google
+                  </a>
+                  <span v-else class="text-slate-500 text-[11px]">Local</span>
+                </td>
+                <td class="py-3 px-3 text-right space-x-1">
+                  <button @click="changeAppointmentStatus(apt.id, 'confirmado')" title="Marcar como Confirmado" class="p-1.5 rounded-lg bg-emerald-900/40 hover:bg-emerald-800 text-emerald-300 border border-emerald-700/50">
+                    <i class="fa-solid fa-check"></i>
+                  </button>
+                  <button @click="changeAppointmentStatus(apt.id, 'reagendar')" title="Mover para Reagendar (Coluna 8)" class="p-1.5 rounded-lg bg-rose-900/40 hover:bg-rose-800 text-rose-300 border border-rose-700/50">
+                    <i class="fa-solid fa-calendar-xmark"></i>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 3: REGRAS DE TEMPO & HORÁRIOS -->
+    <section v-if="currentTab === 'settings'" class="glass-card rounded-2xl p-6 space-y-6">
+      <div>
+        <h2 class="text-lg font-bold text-white">Regras de Tempo & Horários de Envio</h2>
+        <p class="text-xs text-slate-400">Configure os intervalos de segurança para manter as conversas 100% humanizadas.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
+              <i class="fa-solid fa-user-clock text-lg"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-white text-sm">Sala de Espera Humanizada</h3>
+              <p class="text-xs text-slate-400">Atraso aleatório antes do 1º envio para novo lead</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <label class="block text-slate-400 mb-1">Mínimo (minutos):</label>
+              <input type="number" min="1" max="60" v-model.number="config.humanDelay.minMinutes"
+                     class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono">
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Máximo (minutos):</label>
+              <input type="number" min="1" max="60" v-model.number="config.humanDelay.maxMinutes"
+                     class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono">
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500">
+            Cada lead aguardará um tempo aleatório entre {{ config.humanDelay?.minMinutes }} e {{ config.humanDelay?.maxMinutes }} minutos, simulando uma pessoa real lendo o cadastro.
+          </p>
+        </div>
+
+        <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 flex items-center justify-center">
+              <i class="fa-solid fa-business-time text-lg"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-white text-sm">Janela de Horário Comercial</h3>
+              <p class="text-xs text-slate-400">Disparos são pausados fora deste horário</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <label class="block text-slate-400 mb-1">Início (Hora):</label>
+              <input type="number" min="0" max="23" v-model.number="config.workingHours.startHour"
+                     class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono">
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Término (Hora):</label>
+              <input type="number" min="0" max="23" v-model.number="config.workingHours.endHour"
+                     class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono">
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500">
+            Leads cadastrados fora deste período são retidos na Fila Noturna e liberados a partir das {{ config.workingHours?.startHour }}:00.
+          </p>
+        </div>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+        <h3 class="font-bold text-white text-sm flex items-center">
+          <i class="fa-brands fa-whatsapp text-emerald-400 mr-2 text-base"></i>
+          Telefone do Administrador para Alertas WhatsApp
+        </h3>
+        <div class="max-w-md">
+          <input type="text" v-model="config.adminNotifyNumber"
+                 class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+          <p class="text-[11px] text-slate-500 mt-1">
+            Recebe alertas quando um candidato responde aos 3 áudios, agenda entrevista ou solicita reagendamento.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-2">
+        <button @click="saveConfig" :disabled="saving" class="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center space-x-2 transition shadow-lg shadow-indigo-600/30">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span>{{ saving ? 'Salvando...' : 'Salvar Alterações' }}</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- TAB 4: MENSAGENS & VARIAÇÕES (A, B, C) -->
+    <section v-if="currentTab === 'messages'" class="glass-card rounded-2xl p-6 space-y-6">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h2 class="text-lg font-bold text-white">Variações da 1ª Mensagem (A, B, C)</h2>
+          <p class="text-xs text-slate-400">O robô alterna aleatoriamente entre as variações para evitar bloqueio e soar humano.</p>
+        </div>
+        <button @click="addVariation" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center space-x-1.5 transition">
+          <i class="fa-solid fa-plus"></i>
+          <span>Adicionar Variação</span>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div v-for="(variation, idx) in config.messageVariations" :key="idx"
+             class="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-bold uppercase tracking-wider text-indigo-400">
+              Variação {{ String.fromCharCode(65 + idx) }}
+            </span>
+            <button @click="removeVariation(idx)" v-if="config.messageVariations.length > 1" class="text-rose-400 hover:text-rose-300 text-xs p-1">
+              <i class="fa-solid fa-trash-can mr-1"></i> Remover
+            </button>
+          </div>
+          <textarea v-model="config.messageVariations[idx]" rows="6"
+                    class="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"></textarea>
+          <div class="flex items-center space-x-2 text-[11px] text-slate-400">
+            <span>Variáveis disponíveis:</span>
+            <button @click="insertTag(idx, '{{saudacao}}')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 font-mono">{{saudacao}}</button>
+            <button @click="insertTag(idx, '{{primeiro_nome}}')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 font-mono">{{primeiro_nome}}</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-2">
+        <button @click="saveConfig" :disabled="saving" class="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center space-x-2 transition shadow-lg shadow-indigo-600/30">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span>{{ saving ? 'Salvando...' : 'Salvar Variações' }}</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- TAB 5: ÁUDIOS DO FUNIL (PTT) -->
+    <section v-if="currentTab === 'audios'" class="glass-card rounded-2xl p-6 space-y-6">
+      <div>
+        <h2 class="text-lg font-bold text-white">Gerenciador dos 3 Áudios PTT</h2>
+        <p class="text-xs text-slate-400">Os áudios são enviados sequencialmente como nota de voz gravada na hora pelo WhatsApp.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div v-for="id in [1, 2, 3]" :key="id" class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-orange-600/20 text-orange-400 flex items-center justify-center font-bold text-sm">
+              #{{ id }}
+            </div>
+            <div>
+              <h3 class="font-bold text-white text-sm">Áudio {{ id }}</h3>
+              <p class="text-[11px] text-slate-400">Formato Opus/OGG PTT</p>
+            </div>
+          </div>
+
+          <audio controls class="w-full" :src="'/funnel-api/audios/' + id + '?t=' + audioTimestamp"></audio>
+
+          <div class="pt-2">
+            <label class="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center space-x-2 cursor-pointer transition">
+              <i class="fa-solid fa-upload"></i>
+              <span>Substituir Áudio {{ id }}</span>
+              <input type="file" accept="audio/*" class="hidden" @change="uploadAudio($event, id)">
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: FILAS DE ESPERA -->
+    <section v-if="currentTab === 'queues'" class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="glass-card rounded-2xl p-6 space-y-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h3 class="font-bold text-white text-base">Sala de Espera Ativa</h3>
+              <p class="text-xs text-slate-400">Leads aguardando envio humanizado (4 a 8 min)</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              {{ stats.scheduled?.length || 0 }} na espera
+            </span>
+          </div>
+
+          <div v-if="!stats.scheduled || stats.scheduled.length === 0" class="text-center py-10 text-slate-500 text-xs">
+            Nenhum lead aguardando no momento.
+          </div>
+
+          <div v-else class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+            <div v-for="item in stats.scheduled" :key="item.id"
+                 class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex justify-between items-center text-xs">
+              <div>
+                <p class="font-bold text-white">{{ item.fullName }}</p>
+                <p class="text-slate-400 font-mono text-[11px]">+{{ item.phone }}</p>
+              </div>
+              <div class="text-right">
+                <span class="text-indigo-400 font-semibold">{{ item.delayMinutes }} min</span>
+                <p class="text-[10px] text-slate-500">{{ item.addedAt }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 space-y-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h3 class="font-bold text-white text-base">Fila Noturna</h3>
+              <p class="text-xs text-slate-400">Leads que entraram fora do horário (após 21h)</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              {{ stats.queue?.length || 0 }} retidos
+            </span>
+          </div>
+
+          <div v-if="!stats.queue || stats.queue.length === 0" class="text-center py-10 text-slate-500 text-xs">
+            Fila noturna vazia.
+          </div>
+
+          <div v-else class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+            <div v-for="item in stats.queue" :key="item.id"
+                 class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex justify-between items-center text-xs">
+              <div>
+                <p class="font-bold text-white">{{ item.fullName }}</p>
+                <p class="text-slate-400 font-mono text-[11px]">+{{ item.phone }}</p>
+              </div>
+              <div class="text-right">
+                <span class="text-emerald-400 font-semibold">Liberar às 08:00</span>
+                <p class="text-[10px] text-slate-500">{{ item.addedAt }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 7: LOGS EM TEMPO REAL -->
+    <section v-if="currentTab === 'logs'" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <div>
+          <h2 class="text-lg font-bold text-white">Console de Logs em Tempo Real</h2>
+          <p class="text-xs text-slate-400">Acompanhe cada captura, agendamento Google Calendar e follow-up.</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <label class="text-xs text-slate-400 flex items-center space-x-1 cursor-pointer">
+            <input type="checkbox" v-model="autoRefreshLogs" class="accent-indigo-500 rounded">
+            <span>Auto-atualizar (5s)</span>
+          </label>
+          <button @click="fetchLogs" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700">
+            <i class="fa-solid fa-rotate-right mr-1"></i> Atualizar
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-black/90 p-4 rounded-2xl border border-slate-800 font-mono text-xs text-slate-300 h-96 overflow-y-auto custom-scrollbar space-y-1">
+        <div v-for="(line, idx) in logs" :key="idx" class="leading-relaxed hover:bg-slate-900/60 px-1 rounded">
+          <span :class="getLogColor(line)">{{ line }}</span>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+    createApp({
+      setup() {
+        const tabs = [
+          { id: 'overview', name: 'Visão Geral & Métricas', icon: 'fa-solid fa-chart-pie' },
+          { id: 'remarketing', name: 'Remarketing (Base Antiga)', icon: 'fa-solid fa-bullhorn', badge: '1.299' },
+          { id: 'calendar', name: 'Google Agenda & Entrevistas', icon: 'fa-regular fa-calendar-check' },
+          { id: 'settings', name: 'Regras de Tempo & Horários', icon: 'fa-solid fa-sliders' },
+          { id: 'messages', name: 'Mensagens & Variações', icon: 'fa-solid fa-envelope-open-text' },
+          { id: 'audios', name: 'Áudios do Funil (PTT)', icon: 'fa-solid fa-microphone' },
+          { id: 'queues', name: 'Filas de Espera', icon: 'fa-solid fa-list-check' },
+          { id: 'logs', name: 'Logs ao Vivo', icon: 'fa-solid fa-terminal' }
+        ];
+
+        const currentTab = ref('overview');
+        const loading = ref(false);
+        const saving = ref(false);
+        const testingCal = ref(false);
+        const toast = ref({ show: false, message: '', type: 'success' });
+        const audioTimestamp = ref(Date.now());
+        const autoRefreshLogs = ref(true);
+        const appointmentFilter = ref('all');
+
+        const config = ref({
+          workingHours: { startHour: 8, endHour: 21 },
+          queueIntervalMinutes: 25,
+          humanDelay: { minMinutes: 4, maxMinutes: 8 },
+          adminNotifyNumber: '5511984736679',
+          messageVariations: [],
+          calendar: {
+            location: 'Rua Paru, 175 - Vila Mazzei, São Paulo - SP, 02310-200',
+            copyEmail: 'srzambrini@gmail.com',
+            calendarId: 'primary',
+            morningHour: 8,
+            morningMinute: 30,
+            preInterviewMinutes: 45,
+            clientId: '',
+            clientSecret: ''
+          }
+        });
+
+        const calendarInfo = ref({ configured: false, clientEmail: '', type: '', isOAuth: false });
+        const appointments = ref([]);
+        const stats = ref({ kanban: [], queue: [], scheduled: [], queueCount: 0, scheduledCount: 0 });
+        const logs = ref([]);
+
+        const remarketing = ref({
+          state: {
+            enabled: false,
+            dailyLimit: 50,
+            todaySent: 0,
+            totalSent: 0,
+            repliedCount: 0,
+            minIntervalMinutes: 9,
+            maxIntervalMinutes: 18,
+            startHour: 9,
+            startMinute: 30,
+            endHour: 20,
+            endMinute: 30,
+            nextSendInMinutes: null
+          },
+          counts: { total: 1299, sent: 0, pending: 1299, replied: 0, failed: 0 },
+          templates: [],
+          recentSent: []
+        });
+        const togglingRemarketing = ref(false);
+        const savingRemarketingConfig = ref(false);
+        const syncingRemarketing = ref(false);
+        const activeTemplateTab = ref(0);
+
+        const remarketingProgress = computed(() => {
+          if (!remarketing.value.counts || !remarketing.value.counts.total) return 0;
+          return Math.round((remarketing.value.counts.sent / remarketing.value.counts.total) * 100);
+        });
+
+        async function fetchRemarketing() {
+          try {
+            const res = await fetch('/funnel-api/remarketing');
+            if (res.ok) {
+              remarketing.value = await res.json();
+            }
+          } catch (e) {}
+        }
+
+        async function toggleRemarketingStatus() {
+          togglingRemarketing.value = true;
+          try {
+            const newStatus = !(remarketing.value.state && remarketing.value.state.enabled);
+            const res = await fetch('/funnel-api/remarketing/toggle', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ enabled: newStatus })
+            });
+            if (res.ok) {
+              showToast(newStatus ? 'Disparos de Remarketing INICIADOS com proteção anti-ban!' : 'Disparos de Remarketing PAUSADOS.');
+              await fetchRemarketing();
+            }
+          } catch (e) {
+            showToast('Erro ao alternar status do remarketing', 'error');
+          } finally {
+            togglingRemarketing.value = false;
+          }
+        }
+
+        async function saveRemarketingSettings() {
+          savingRemarketingConfig.value = true;
+          try {
+            const res = await fetch('/funnel-api/remarketing/config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(remarketing.value.state)
+            });
+            if (res.ok) {
+              showToast('Parâmetros de remarketing salvos com sucesso!');
+              await fetchRemarketing();
+            }
+          } catch (e) {
+            showToast('Erro ao salvar parâmetros', 'error');
+          } finally {
+            savingRemarketingConfig.value = false;
+          }
+        }
+
+        async function triggerSyncRemarketing() {
+          syncingRemarketing.value = true;
+          try {
+            const res = await fetch('/funnel-api/remarketing/sync', { method: 'POST' });
+            if (res.ok) {
+              const data = await res.json();
+              showToast(`Base sincronizada: ${data.result.total} homens qualificados (${data.result.femaleFiltered} mulheres descartadas).`);
+              await fetchRemarketing();
+            }
+          } catch (e) {
+            showToast('Erro ao sincronizar base', 'error');
+          } finally {
+            syncingRemarketing.value = false;
+          }
+        }
+
+        function showToast(message, type = 'success') {
+          toast.value = { show: true, message, type };
+          setTimeout(() => { toast.value.show = false; }, 3500);
+        }
+
+        async function fetchConfig() {
+          try {
+            const res = await fetch('/funnel-api/config');
+            if (res.ok) {
+              const data = await res.json();
+              config.value = data;
+              if (!config.value.humanDelay) {
+                config.value.humanDelay = { minMinutes: 4, maxMinutes: 8 };
+              }
+              if (!config.value.calendar) {
+                config.value.calendar = {
+                  location: 'Rua Paru, 175 - Vila Mazzei, São Paulo - SP, 02310-200',
+                  copyEmail: 'srzambrini@gmail.com',
+                  calendarId: 'primary',
+                  morningHour: 8,
+                  morningMinute: 30,
+                  preInterviewMinutes: 45,
+                  clientId: '',
+                  clientSecret: ''
+                };
+              }
+            }
+          } catch (e) {}
+        }
+
+        async function fetchCalendarCredentials() {
+          try {
+            const res = await fetch('/funnel-api/calendar/credentials');
+            if (res.ok) {
+              calendarInfo.value = await res.json();
+            }
+          } catch (e) {}
+        }
+
+        async function fetchAppointments() {
+          try {
+            const res = await fetch('/funnel-api/appointments');
+            if (res.ok) {
+              appointments.value = await res.json();
+            }
+          } catch (e) {}
+        }
+
+        async function saveConfig() {
+          saving.value = true;
+          try {
+            const res = await fetch('/funnel-api/config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(config.value)
+            });
+            if (res.ok) {
+              showToast('Configurações salvas com sucesso!');
+            } else {
+              showToast('Erro ao salvar configurações', 'error');
+            }
+          } catch (e) {
+            showToast('Erro de conexão com o servidor', 'error');
+          } finally {
+            saving.value = false;
+          }
+        }
+
+        async function connectGoogleOAuth() {
+          if (!config.value.calendar?.clientId || !config.value.calendar?.clientSecret) {
+            showToast('Preencha o Client ID e Client Secret antes de conectar.', 'error');
+            return;
+          }
+          await saveConfig();
+          const popup = window.open('/funnel-api/auth/google', 'google_oauth_popup', 'width=600,height=750,menubar=no,toolbar=no');
+          const checkTimer = setInterval(async () => {
+            if (!popup || popup.closed) {
+              clearInterval(checkTimer);
+              await fetchCalendarCredentials();
+              await fetchConfig();
+            }
+          }, 1500);
+        }
+
+        async function disconnectGoogle() {
+          if (!confirm('Deseja desconectar sua conta do Google Calendar?')) return;
+          try {
+            const res = await fetch('/funnel-api/auth/google/disconnect', { method: 'POST' });
+            if (res.ok) {
+              showToast('Conta do Google desconectada!');
+              await fetchCalendarCredentials();
+            }
+          } catch (e) {
+            showToast('Erro ao desconectar conta', 'error');
+          }
+        }
+
+        async function fetchStats() {
+          try {
+            const res = await fetch('/funnel-api/stats');
+            if (res.ok) {
+              stats.value = await res.json();
+            }
+          } catch (e) {}
+        }
+
+        async function fetchLogs() {
+          try {
+            const res = await fetch('/funnel-api/logs');
+            if (res.ok) {
+              const data = await res.json();
+              logs.value = data.logs || [];
+            }
+          } catch (e) {}
+        }
+
+        async function testCalendarConnection() {
+          testingCal.value = true;
+          try {
+            const res = await fetch('/funnel-api/calendar/test', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+              showToast(data.message || 'Google Calendar conectado com sucesso!');
+            } else {
+              showToast(data.message || 'Falha ao conectar com Google Calendar', 'error');
+            }
+          } catch (e) {
+            showToast('Erro de conexão ao testar agenda', 'error');
+          } finally {
+            testingCal.value = false;
+          }
+        }
+
+        async function uploadCredentialsFile(event) {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const formData = new FormData();
+          formData.append('file', file);
+
+          showToast('Validando e salvando credencial do Google...');
+
+          try {
+            const res = await fetch('/funnel-api/calendar/credentials', {
+              method: 'POST',
+              body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+              showToast('Credenciais do Google salvas com sucesso!');
+              await fetchCalendarCredentials();
+            } else {
+              showToast(data.error || 'Erro ao salvar credenciais', 'error');
+            }
+          } catch (e) {
+            showToast('Falha no upload do arquivo de credenciais', 'error');
+          } finally {
+            event.target.value = '';
+          }
+        }
+
+        async function changeAppointmentStatus(id, newStatus) {
+          try {
+            const res = await fetch(`/funnel-api/appointments/${id}/status`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus })
+            });
+            if (res.ok) {
+              showToast(`Status atualizado para: ${newStatus}`);
+              await fetchAppointments();
+              await fetchStats();
+            }
+          } catch (e) {
+            showToast('Erro ao atualizar status', 'error');
+          }
+        }
+
+        async function uploadAudio(event, id) {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const formData = new FormData();
+          formData.append('audio', file);
+
+          showToast(`Convertendo e salvando Áudio ${id}...`);
+
+          try {
+            const res = await fetch(`/funnel-api/audios/${id}`, {
+              method: 'POST',
+              body: formData
+            });
+
+            if (res.ok) {
+              showToast(`Áudio ${id} atualizado com sucesso!`);
+              audioTimestamp.value = Date.now();
+            } else {
+              showToast(`Erro ao atualizar Áudio ${id}`, 'error');
+            }
+          } catch (e) {
+            showToast('Falha no upload do áudio', 'error');
+          } finally {
+            event.target.value = '';
+          }
+        }
+
+        const filteredAppointments = computed(() => {
+          const list = appointments.value || [];
+          if (appointmentFilter.value === 'all') return list;
+          if (appointmentFilter.value === 'confirmado') return list.filter(a => a.status === 'confirmado');
+          if (appointmentFilter.value === 'reagendar') return list.filter(a => a.status === 'reagendar');
+          if (appointmentFilter.value === 'today') {
+            const todaySp = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            return list.filter(a => a.dateStr === todaySp);
+          }
+          return list;
+        });
+
+        function getStatusBadgeClass(status) {
+          if (status === 'confirmado') return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+          if (status === 'reagendar') return 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+          if (status === 'concluido') return 'bg-purple-500/20 text-purple-400 border border-purple-500/30';
+          return 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+        }
+
+        function getKanbanCount(tagId) {
+          const item = (stats.value.kanban || []).find(k => k.id === tagId);
+          return item ? item.count : 0;
+        }
+
+        function addVariation() {
+          config.value.messageVariations.push(
+            '{{saudacao}} {{primeiro_nome}}, tudo bem?\n\nSou Venerável Biaggio Scomparin e recebi sua intenção em ingressar na Maçonaria.\n\nPoderia me responder brevemente:\n\nReside em que região de SP?\nQual a sua idade?\nPorquê quer entrar na Maçonaria?'
+          );
+        }
+
+        function removeVariation(index) {
+          config.value.messageVariations.splice(index, 1);
+        }
+
+        function insertTag(index, tag) {
+          config.value.messageVariations[index] = (config.value.messageVariations[index] || '') + ' ' + tag;
+        }
+
+        function getLogColor(line) {
+          if (line.includes('SUCESSO')) return 'text-emerald-400 font-semibold';
+          if (line.includes('AGENDADO') || line.includes('#AGENDAR') || line.includes('GOOGLE')) return 'text-indigo-400 font-bold';
+          if (line.includes('REAGEND') || line.includes('CANCEL')) return 'text-rose-400 font-bold';
+          if (line.includes('GATILHO') || line.includes('RESPOSTA') || line.includes('FOLLOW-UP')) return 'text-amber-400 font-bold';
+          if (line.includes('ERRO') || line.includes('FALHA')) return 'text-rose-400 font-bold';
+          if (line.includes('KANBAN')) return 'text-blue-400';
+          return 'text-slate-300';
+        }
+
+        async function refreshAll() {
+          loading.value = true;
+          await Promise.all([
+            fetchConfig(),
+            fetchCalendarCredentials(),
+            fetchAppointments(),
+            fetchStats(),
+            fetchLogs(),
+            fetchRemarketing()
+          ]);
+          loading.value = false;
+        }
+
+        let interval = null;
+        onMounted(() => {
+          refreshAll();
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.get('connected') === 'true') {
+            currentTab.value = 'calendar';
+            showToast('Conta Google conectada com sucesso!');
+          }
+          interval = setInterval(() => {
+            fetchStats();
+            fetchAppointments();
+            fetchRemarketing();
+            if (autoRefreshLogs.value) fetchLogs();
+          }, 5000);
+        });
+
+        onUnmounted(() => {
+          if (interval) clearInterval(interval);
+        });
+
+        return {
+          tabs,
+          currentTab,
+          loading,
+          saving,
+          testingCal,
+          toast,
+          config,
+          calendarInfo,
+          appointments,
+          appointmentFilter,
+          filteredAppointments,
+          stats,
+          logs,
+          remarketing,
+          togglingRemarketing,
+          savingRemarketingConfig,
+          syncingRemarketing,
+          activeTemplateTab,
+          remarketingProgress,
+          toggleRemarketingStatus,
+          saveRemarketingSettings,
+          triggerSyncRemarketing,
+          audioTimestamp,
+          autoRefreshLogs,
+          saveConfig,
+          connectGoogleOAuth,
+          disconnectGoogle,
+          testCalendarConnection,
+          uploadCredentialsFile,
+          changeAppointmentStatus,
+          uploadAudio,
+          getKanbanCount,
+          getStatusBadgeClass,
+          addVariation,
+          removeVariation,
+          insertTag,
+          getLogColor,
+          fetchLogs,
+          refreshAll
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

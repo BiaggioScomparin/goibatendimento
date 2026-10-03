@@ -1,0 +1,451 @@
+================================================================
+  WHATICKET MULTIZAP v7 - GUIA COMPLETO DE INSTALAÇÃO
+================================================================
+
+Bem-vindo! Este guia foi feito para quem NUNCA instalou um servidor.
+Siga cada passo COM CALMA, na ordem, copiando e colando os comandos.
+Não pule etapas. Se travar, leia novamente do início.
+
+📞 **Para mais detalhes e ajuda na instalação, contate (WhatsApp): 14 99686-9838**
+
+================================================================
+  O QUE VOCÊ VAI PRECISAR
+================================================================
+
+1) Uma VPS (servidor na nuvem). Recomendado:
+   - Sistema: Ubuntu 22.04 LTS
+   - Tamanho mínimo OFICIAL: 4 vCPU e 8 GB de RAM
+   - Se sua VPS tem 6 GB de RAM (como 4 vCPU + 6 GB): FUNCIONA,
+     mas você PRECISA criar um SWAP de pelo menos 4 GB antes
+     de instalar. Veja o Passo 0 mais abaixo. É obrigatório.
+
+2) Dois domínios ou subdomínios (DNS) apontando para o IP da VPS:
+   - Um para o PAINEL (frontend): por exemplo, app.suaempresa.com
+   - Um para a API (backend):          por exemplo, api.suaempresa.com
+
+   Para apontar, crie dois registros "A" no seu provedor de domínio:
+     app  -> SEU_IP_DA_VPS
+     api  -> SEU_IP_DA_VPS
+   (A propagação do DNS pode levar de 5 minutos a 24 horas.)
+
+3) O pacote "Multizap.zip" dentro da pasta "install".
+   (Nota: Este arquivo já está na versão 2026 Auditada & Corrigida,
+   contendo todas as 25 correções para concorrência, proteção contra
+   memory leak, Node 20.x, timeouts no Nginx e nó nativo de IA DeepSeek.)
+
+4) Um programa para acessar a VPS pelo terminal:
+   - Windows: use "Windows PowerShell" ou baixe o "PuTTY".
+   - Mac/Linux: use o "Terminal" do próprio sistema.
+
+================================================================
+  ATALHO AUTOMÁTICO: INSTALADOR DO ZERO EM 1 COMANDO (WINDOWS)
+================================================================
+Se você usa Windows e quer instalar do ZERO em uma VPS nova sem precisar
+digitar vários comandos manuais no SSH ou criar swap na mão, utilize
+o nosso script automatizado!
+
+Basta abrir o PowerShell no Windows (na sua pasta C:\Users\Teste\ ou na 
+pasta do projeto) e executar:
+
+    .\instalar_remoto.ps1
+
+O que ele faz por você automaticamente:
+  1. Envia os arquivos atualizados para a sua VPS (via scp).
+  2. Verifica e cria automaticamente 6 GB de Memória Swap na VPS.
+  3. Abre o assistente interativo na tela, pedindo apenas o nome
+     da instância, senhas, domínios e e-mail!
+
+Se preferir fazer manualmente passo a passo, continue abaixo:
+
+================================================================
+  PASSO 0 - (OBRIGATÓRIO EM VPS DE 6 GB) CRIAR UM SWAP
+================================================================
+
+O QUE É SWAP?
+É um espaço no DISCO da VPS que o Linux usa como se fosse uma
+"memória RAM extra". Quando a RAM acaba, o sistema despeja ali
+dados que não está usando naquele momento, evitando travamentos.
+
+QUANDO EU PRECISO DE SWAP?
+- Se sua VPS tem 8 GB de RAM ou mais: PODE PULAR este passo.
+- Se sua VPS tem 6 GB de RAM (ou menos): PRECISA fazer este passo,
+  senão a instalação vai travar ou derrubar processos durante o
+  build (npm run build).
+
+COMO CRIAR (cole um comando por vez, na ordem):
+
+0.1) Confirme se você já tem algum swap criado:
+
+   sudo swapon --show
+
+   Se aparecer uma tabela com informações, você já tem swap e
+   pode pular este passo. Se não aparecer nada, continue.
+
+0.2) Crie um arquivo de 4 GB que será usado como swap:
+
+   sudo fallocate -l 4G /swapfile
+
+   (Se o comando "fallocate" der erro, use este alternativo:)
+   sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress
+
+0.3) Defina as permissões corretas (segurança):
+
+   sudo chmod 600 /swapfile
+
+0.4) Transforme o arquivo em swap:
+
+   sudo mkswap /swapfile
+
+0.5) Ative o swap imediatamente:
+
+   sudo swapon /swapfile
+
+0.6) Confirme que está ativo:
+
+   sudo swapon --show
+
+   Você deve ver uma linha mostrando /swapfile com 4G.
+
+0.7) Faça o swap ser ativado automaticamente toda vez que a VPS
+     reiniciar (MUITO IMPORTANTE):
+
+   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+0.8) (Opcional) Ajuste a "swappiness". Esse número controla o
+     quanto o Linux prefere usar swap em vez de RAM. O valor 10
+     faz o sistema usar mais a RAM e só cair pro swap quando
+     realmente precisar (bom para servidores):
+
+   sudo sysctl vm.swappiness=10
+   echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
+
+Pronto! Agora sua VPS de 6 GB vai se comportar como se tivesse
+10 GB de memória durante a instalação e o uso diário.
+
+================================================================
+  PASSO 1 - CONECTAR NA VPS (ssh-keygen -R (ip vps) para apagar sessão antiga).
+================================================================
+
+1.1) Abra o terminal.
+1.2) Digite o comando abaixo e aperte ENTER:
+
+   ssh root@SEU_IP_DA_VPS  
+
+   (Troque SEU_IP_DA_VPS pelo IP que o provedor da VPS te deu.)
+
+1.3) Vai aparecer a pergunta "Are you sure you want to continue connecting?"
+     Responda: yes   (e aperte ENTER)
+1.4) Digite a senha do root e aperte ENTER.
+     (No Windows PowerShell, ao colar a senha, ela não aparece na tela.
+      Isso é normal. Aperte ENTER mesmo assim.)
+
+Se apareceu algo como "root@ubuntu:~#" no final, você está dentro.
+Vamos em frente.
+
+================================================================
+  PASSO 2 - CRIAR O USUÁRIO "deploy"
+================================================================
+
+O sistema Whaticket NÃO roda como root por segurança. Vamos criar
+um usuário comum chamado "deploy" que terá poderes de administrador.
+
+2.1) Cole o comando abaixo e aperte ENTER:
+
+   adduser deploy
+
+2.2) O sistema vai pedir a "new password" (nova senha).
+     Digite uma senha formada SÓ POR NÚMEROS (ex: 10203040).
+     >>>> GUARDE ESSA SENHA, VOCÊ VAI USAR DEPOIS <<<<
+
+2.3) Nas próximas perguntas (Full Name, Room Number, etc.)
+     basta apertar ENTER até terminar.
+
+2.4) Agora dê poderes de administrador para o usuário deploy:
+
+   usermod -aG sudo deploy
+
+Pronto. Usuário "deploy" criado.
+
+================================================================
+  PASSO 3 - ATUALIZAR O SERVIDOR
+================================================================
+
+Cole, um por um, os comandos abaixo. Espere cada um terminar
+antes de colar o próximo.
+
+3.1) Atualizar a lista de pacotes:
+
+   sudo apt -y update && sudo apt -y upgrade
+
+3.2) Instalar utilitários básicos (zip, unzip etc.):
+
+   sudo apt update && sudo apt install -y zip unzip curl
+
+3.3) Reiniciar a VPS para aplicar tudo:
+
+   sudo reboot
+
+3.4) Espere uns 60 segundos. Depois conecte de novo:
+
+   ssh root@SEU_IP_DA_VPS
+
+================================================================
+  PASSO 4 - ENVIAR OS ARQUIVOS DO SISTEMA PARA A VPS
+================================================================
+
+Você precisa colocar a pasta "install" (com tudo dentro) na VPS.
+
+4.1) No seu COMPUTADOR, abra o terminal NA PASTA onde está o
+     arquivo "Multizap.tar.gz". Dica: abra a pasta, clique com
+     o botão direito em um espaço vazio e escolha "Abrir no
+     Terminal" / "Open in Terminal".
+
+4.2) Rode o comando abaixo (PowerShell no Windows ou Terminal no Mac/Linux)
+     para enviar a pasta "install" direto para a raiz da VPS.
+     Será pedida a senha do root:
+
+   scp -r "install" root@184.107.88.103:/
+
+     Se aparecer um aviso sobre fingerprint, digite "yes" e ENTER.
+
+4.3) Volte para o terminal conectado na VPS e confirme que a pasta
+     chegou:
+
+   ls /install
+
+     Você deve ver arquivos como: instalar_primaria, instalar_nova_instancia,
+     Multizap.tar.gz, README.md etc.
+
+================================================================
+  PASSO 5 - RODAR O INSTALADOR PRINCIPAL
+================================================================
+
+5.1) Dê permissão total à pasta install e entre nela:
+
+   sudo chmod -R 777 /install && cd /install
+
+5.2) Inicie a instalação:
+
+   sudo ./instalar_primaria
+
+5.3) O instalador vai mostrar um menu numerado. Digite:
+
+   0
+
+     e aperte ENTER (isso significa "instalação primária").
+
+5.4) Agora ele vai fazer PERGUNTAS. Responda EXATAMENTE assim:
+
+   - Senha do usuário deploy:
+       >>> Digite a senha NUMÉRICA que você criou no Passo 2.
+
+   - Nome da Instancia/Empresa (sem espaço, sem acento, minúsculo):
+       >>> Exemplo: minhaempresa
+       (Esse nome será usado como pasta. Guarde-o!)
+
+   - Quantidade de Conexões WhatsApp permitidas:
+       >>> 9999
+
+   - Quantidade de Usuários/Atendentes:
+       >>> 9999
+
+   - Domínio do FRONTEND (o painel que você vai abrir no navegador):
+       >>> Digite o domínio do painel. Exemplo: app.suaempresa.com
+
+   - Domínio do BACKEND (a API, usado internamente):
+       >>> Digite o domínio da API.   Exemplo: api.suaempresa.com
+
+   - Porta do FRONTEND (entre 3000 e 3999):
+       >>> Exemplo: 3000
+
+   - Porta do BACKEND (entre 4000 e 4999):
+       >>> Exemplo: 4000
+
+   - Porta do REDIS (entre 5000 e 5999):
+       >>> Exemplo: 5000
+
+5.5) O instalador vai trabalhar sozinho por vários minutos.
+     Vai compilar, instalar banco de dados, Nginx, certificado
+     SSL (HTTPS) etc. NÃO FECHE O TERMINAL.
+
+     Espere até aparecer a mensagem:
+       "Instalação concluída com sucesso!"
+
+================================================================
+  PASSO 6 - TESTAR SE O PAINEL ABRIU
+================================================================
+
+6.1) Abra o navegador (Chrome, Edge, Firefox...).
+6.2) Acesse o domínio do FRONTEND que você cadastrou:
+
+       https://app.suaempresa.com
+
+6.3) Faça login com o usuário padrão:
+
+       Login:    admin@admin.com
+       Senha:    123456
+
+     >>>> IMPORTANTE: troque essa senha assim que entrar! <<<<
+
+Se aparecer o painel, parabéns: a instalação básica funcionou.
+
+================================================================
+  PASSO 7 - (OPCIONAL, MAS RECOMENDADO) CONEXÃO COM WHATSAPP
+================================================================
+
+Em algumas hospedagens, a conexão com WhatsApp não gera o QR Code
+na primeira tentativa por causa do "fingerprint" do navegador.
+Se isso acontecer com você, cole os comandos abaixo no terminal
+da VPS:
+
+7.1) Conecte como root e cole o bloco Python abaixo INTEIRO, do
+     "python3" até o "PY" final, tudo de uma vez:
+
+   sudo -i
+
+   python3 <<'PY'
+   from pathlib import Path
+
+   path = Path("/home/deploy/NOME_DA_EMPRESA/backend/src/libs/wbot.ts")
+   text = path.read_text()
+
+   replacements = [
+       '''          browser: Baileys.Browsers.ubuntu("Chrome"),''',
+       '''          browser: Baileys.Browsers.macOS ? Baileys.Browsers.macOS("Desktop") : ['Mac OS', 'Desktop', '1.0.0'],''',
+       '''          browser: ["Ubuntu", "Chrome", "22.04"],''',
+   ]
+
+   new = '''          browser: ["Windows", "Chrome", "131.0.0.0"],'''
+
+   for old in replacements:
+       if old in text:
+           text = text.replace(old, new, 1)
+           path.write_text(text)
+           print("OK: browser trocado para Windows/Chrome 131.")
+           break
+   else:
+       print("TRECHO NÃO ENCONTRADO. Linhas com browser:")
+       for i, line in enumerate(text.splitlines(), 1):
+           if "browser:" in line:
+               print(i, line)
+   PY
+
+   >>>> LEMBRE-SE <<<<
+   Troque "NOME_DA_EMPRESA" no caminho acima pelo mesmo nome que
+   você escolheu no Passo 5.4 (ex: minhaempresa).
+
+7.2) Agora compile de novo e reinicie o backend (cole um por vez):
+
+   cd /home/deploy/NOME_DA_EMPRESA/backend
+   npm run build
+   sudo -iu deploy pm2 flush
+   sudo -iu deploy pm2 restart NOME_DA_EMPRESA-backend
+
+7.3) Volte ao painel e tente conectar um WhatsApp de novo.
+
+================================================================
+  COMO ATUALIZAR UMA INSTÂNCIA JÁ EXISTENTE (SEM PERDA DE DADOS)
+================================================================
+
+Se você JÁ instalou o sistema na sua VPS anteriormente e quer aplicar
+as 25 correções de performance e estabilidade SEM PERDER conversas,
+contatos, mídias ou banco de dados:
+
+1) Envie a pasta "install" atualizada para /root/ na sua VPS.
+2) Conecte-se na VPS como root e execute:
+
+   cd /root/install
+   chmod +x atualizar_instancia.sh
+   ./atualizar_instancia.sh NOME_DA_SUA_EMPRESA
+
+Exemplo:
+   ./atualizar_instancia.sh growthstreamings
+
+DICA RÁPIDA (PARA WINDOWS POWERSHELL):
+Você também pode atualizar executando o script "atualizar_remoto.ps1"
+diretamente no seu PowerShell no Windows, que ele já envia e atualiza
+a VPS automaticamente (pedindo apenas sua senha root da VPS):
+   .\atualizar_remoto.ps1
+
+Pronto! O script fará o backup das suas configurações, substituirá apenas
+os arquivos de código corrigidos e reiniciará o sistema com segurança.
+
+================================================================
+  INSTALAÇÕES ADICIONAIS (segunda empresa, terceira etc.)
+================================================================
+
+Se você quiser rodar MAIS DE UMA empresa no mesmo servidor
+(ex: empresa1, empresa2, empresa3), use:
+
+   sudo chmod -R 777 /install && cd /install && sudo ./instalar_nova_instancia
+
+Escolha a opção 0 e use portas diferentes das anteriores
+(3001/4001/5001, 3002/4002/5002, etc.).
+
+================================================================
+  COMANDOS ÚTEIS DO DIA A DIA
+================================================================
+
+Todos esses comandos devem ser rodados com usuário root ou com sudo.
+
+- Ver o status dos sistemas:
+    sudo -iu deploy pm2 list
+
+- Ver os logs em tempo real do backend:
+    sudo -iu deploy pm2 logs NOME_DA_EMPRESA-backend
+
+- Ver os logs em tempo real do frontend:
+    sudo -iu deploy pm2 logs NOME_DA_EMPRESA-frontend
+
+- Reiniciar tudo:
+    sudo -iu deploy pm2 restart all
+
+- Parar tudo:
+    sudo -iu deploy pm2 stop all
+
+================================================================
+  PROBLEMAS COMUNS
+================================================================
+
+1) "Permission denied" ao rodar um comando:
+   -> Você esqueceu o "sudo" na frente. Coloque e rode de novo.
+
+2) O painel não abre / domínio não carrega:
+   -> Confira se os registros DNS (A) apontam para o IP da VPS.
+   -> Espere até 24h após criar os registros.
+   -> Confira se a porta 80 e 443 estão liberadas no firewall.
+
+3) Erro de certificado SSL:
+   -> Rode: sudo certbot --nginx -d app.seudominio.com -d api.seudominio.com
+
+4) "Port already in use":
+   -> Alguma outra coisa está usando a porta. Troque a porta
+      durante a instalação ou mate o processo: sudo fuser -k PORTA/tcp
+
+5) Erro "502 Bad Gateway" com nginx:
+   -> O Nginx está rodando mas o serviço do Whaticket (PM2) não
+      está respondendo. Verifique:
+   -> Rode: sudo -iu deploy pm2 list
+      Se aparecer "errored" ou "stopped", rode:
+      sudo -iu deploy pm2 restart all
+      sudo -iu deploy pm2 logs --lines 50 (para ver os erros)
+   -> Se o frontend não inicia, pode ser falta de dependência.
+      Rode como root:
+      sudo su - deploy
+      cd /home/deploy/NOME_DA_EMPRESA/frontend
+      npm install express
+      exit
+      sudo -iu deploy pm2 restart all
+
+6) Esqueci a senha do deploy / admin:
+   - Senha do deploy: ela está salva em /install/config (comando: sudo cat /install/config)
+   - Senha do admin: peça suporte no grupo oficial.
+
+7) "Out of memory" / sistema reiniciando / npm run build trava:
+   -> Sua VPS tem pouca RAM e o swap não foi criado (ou é pequeno).
+   -> Rode o Passo 0 deste guia e crie um swap de 4 GB.
+   -> Se já tem swap, aumente para 6 ou 8 GB repetindo o Passo 0
+      com outros valores, por exemplo:
+         sudo fallocate -l 8G /swapfile
+   -> Verifique a memória com: free -h
+
